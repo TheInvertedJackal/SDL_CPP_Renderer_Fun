@@ -7,6 +7,10 @@ using namespace std;
 
 const int WINDOW_SIZE_X = 800, WINDOW_SIZE_Y = 600;
 
+constexpr int DEFAULT_OFFSET_X = WINDOW_SIZE_X / 2, DEFAULT_OFFSET_Y = WINDOW_SIZE_Y / 2;
+
+const int MAX_SPOTLIGHTS = 100;
+
 const double PI = 3.141592;
 
 Uint32 get_32bit_ARGB(unsigned char a, unsigned char r, unsigned char g, unsigned char b){
@@ -17,14 +21,85 @@ Uint32 get_32bit_ARGB(unsigned char a, unsigned char r, unsigned char g, unsigne
     return value;
 }
 
-double offset(double x, double mag, double period, double offset){
-    double temp = mag * sin(period * x + offset);
-    if(temp < 0){
-        temp = 0;
+void cap_value_255(int *value){
+    if(*value > 255){
+        *value = 255;
     }
-    return temp;
 }
 
+Uint32 add_32Bit_ARGB(Uint32 og_color, unsigned char a_a, unsigned char a_r, unsigned char a_g, unsigned char a_b){
+    int a = 0xff000000 & og_color;
+    int r = 0x00ff0000 & og_color;
+    int g = 0x0000ff00 & og_color;
+    int b = 0x000000ff & og_color;
+    a += a_a;
+    r += a_r;
+    g += a_g;
+    b += a_b;
+    cap_value_255(&a);
+    cap_value_255(&r);
+    cap_value_255(&g);
+    cap_value_255(&b);
+    return get_32bit_ARGB(a, r, g, b);
+}
+
+struct Color {
+    int a = 255;
+    int r = 255;
+    int g = 255;
+    int b = 255;
+};
+
+Uint32 add_32Bit_ARGB(Uint32 og_color, Color other){
+    return add_32Bit_ARGB(og_color, other.a, other.r, other.g, other.b);
+}
+
+struct SpotLight {
+    double radius;
+    double og_x_offset;
+    double og_y_offset;
+    double offset_x;
+    double offset_y;
+    double upper_bounds = -1;
+    double lower_bounds = -1;
+    double offset_Y = 0;
+    Color sl_color;
+};
+
+int read_in_spotlights(SpotLight spotlights[]) {
+    int count = 0;
+
+    double radius;
+    double x_offset;
+    double y_offset;
+    Color this_color;
+    cin >> radius;
+    while (cin && count < MAX_SPOTLIGHTS)
+    {
+        cin >> x_offset >> y_offset >> this_color.a >> this_color.r >> this_color.g >> this_color.b;
+        SpotLight temp;
+        temp.radius = radius;
+        if(x_offset == -1.0){
+            x_offset = DEFAULT_OFFSET_X;
+        }
+        if(y_offset == -1.0){
+            y_offset = DEFAULT_OFFSET_Y;
+        }
+        temp.og_x_offset = x_offset;
+        temp.offset_x = x_offset;
+        temp.og_y_offset = y_offset;
+        temp.offset_y = y_offset;
+        temp.sl_color.a = this_color.a;
+        temp.sl_color.r = this_color.r;
+        temp.sl_color.g = this_color.g;
+        temp.sl_color.b = this_color.b;
+
+        spotlights[count] = temp;
+        ++count;
+        cin >> radius;
+    }
+    return count;
+}
 
 int main(int argc, char* argv[]){
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -42,47 +117,57 @@ int main(int argc, char* argv[]){
         SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, WINDOW_SIZE_X, WINDOW_SIZE_Y);
 
     Uint32 * pixels = new Uint32[WINDOW_SIZE_X * WINDOW_SIZE_Y];
-    memset(pixels, 255, WINDOW_SIZE_X * WINDOW_SIZE_Y * sizeof(Uint32));
+
+    SpotLight spotlights[MAX_SPOTLIGHTS];
+
+    int spotlight_count = read_in_spotlights(spotlights);
 
     Uint64 frame_count = 0;
-    
+
+    cout << "Spotlight count:" << spotlight_count << endl;
+
+    cout << "Test:" << add_32Bit_ARGB(0xffff0000, 255, 0, 0x0f, 0) << endl;
+
     while (in_use){
+        //memset(pixels, 0, WINDOW_SIZE_X * WINDOW_SIZE_Y * sizeof(Uint32));
 	
         SDL_UpdateTexture(texture, NULL, pixels, WINDOW_SIZE_X * sizeof(Uint32));
         
         SDL_Event event;
 
-        for (size_t x = 0; x < WINDOW_SIZE_X; x++)
+        for (int x = 0; x < WINDOW_SIZE_X; x++)
         {
-            double x_value = ((double) x) / WINDOW_SIZE_X;
-            double r1 = 255 * offset(x, 1, PI / (WINDOW_SIZE_X * 2), frame_count / 100.0);
-            double r2 = 255 * offset(x, 1, PI / (WINDOW_SIZE_X * 4), frame_count / -50.0);
-            double g1 = 255 * offset(x, 1, PI / (WINDOW_SIZE_X * 1), frame_count / -30.0);
-            double g2 = 255 * offset(x, 1, PI / (WINDOW_SIZE_X * 3), frame_count / 75.0);
-            double b1 = 255 * offset(x, 1, PI / (WINDOW_SIZE_X * 2), frame_count / -50.0);
-            double b2 = 255 * offset(x, 1, PI / (WINDOW_SIZE_X * 4), frame_count / -200.0);
-            double b3 = 255 * offset(x, 1, PI / (WINDOW_SIZE_X * 3), frame_count / 50.0);
-            for (size_t y = 0; y < WINDOW_SIZE_Y; y++)
+            for (int i = 0; i < spotlight_count; i++)
             {
-                double y_value = ((double) y) / WINDOW_SIZE_Y;
-                double tempR = r1 * y_value + r2 * y_value * y_value;
-                double tempG = g1 * y_value + g2 + y_value * .2;
-                double tempB = b1 * y_value + b2 * y_value * y_value + b3 * .9;
-                if(tempR > 255){
-                    tempR = 255;
+                spotlights[i].upper_bounds = -1;
+                spotlights[i].lower_bounds = -1;
+                double x_size = spotlights[i].offset_x - x;
+                if(abs(x_size) <= spotlights[i].radius){
+                    double offset = sqrt(spotlights[i].radius * spotlights[i].radius - x_size * x_size);
+                    spotlights[i].upper_bounds = spotlights[i].offset_y + offset;
+                    spotlights[i].lower_bounds = spotlights[i].offset_y - offset;
+                } 
+            }
+            for (int y = 0; y < WINDOW_SIZE_Y; y++)
+            {
+                Uint32 hold_color = 0;
+                for (int i = 0; i < spotlight_count; i++)
+                {
+                    if(y >= spotlights[i].lower_bounds && y <= spotlights[i].upper_bounds){
+                        hold_color = add_32Bit_ARGB(hold_color, spotlights[i].sl_color);
+                    }
                 }
-                if(tempG > 255){
-                    tempG = 255;
-                }
-                if(tempB > 255){
-                    tempB = 255;
-                }
-                Uint32 r = (Uint32) tempR;
-                Uint32 g = (Uint32) tempG;
-                Uint32 b = (Uint32) tempB;
-                pixels[WINDOW_SIZE_X * y + x] = get_32bit_ARGB(255, r , g, b);
+                pixels[WINDOW_SIZE_X * y + x] = hold_color;
             }
         }
+
+        for (int i = 0; i < spotlight_count; i++)
+        {
+            spotlights[i].offset_x = spotlights[i].og_x_offset + .25 * WINDOW_SIZE_X * sin(frame_count / 50.0);
+            spotlights[i].offset_y = spotlights[i].og_y_offset + .25 * WINDOW_SIZE_Y * sin(frame_count / 50.0);
+        }
+        
+
 
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
@@ -99,6 +184,7 @@ int main(int argc, char* argv[]){
         SDL_Delay(1000 / 60);
     }
 
+    //delete[] spotlights;
     delete[] pixels;
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(rend);
