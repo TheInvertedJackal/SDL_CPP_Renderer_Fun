@@ -13,6 +13,26 @@ const int MAX_SPOTLIGHTS = 100;
 
 const double PI = 3.141592;
 
+struct Color {
+    int a = 255;
+    int r = 255;
+    int g = 255;
+    int b = 255;
+};
+
+struct SpotLight {
+    double radius;
+    double og_x_offset;
+    double og_y_offset;
+    double offset_x;
+    double offset_y = 0;
+    double upper_bounds = -1;
+    double lower_bounds = -1;
+    double (*x_move)(double og, double speed, double range, int frame_count);
+    double (*y_move)(double og, double speed, double range, int frame_count);
+    Color sl_color;
+};
+
 Uint32 get_32bit_ARGB(unsigned char a, unsigned char r, unsigned char g, unsigned char b){
     int value = a;
     value = value << 8 | r;
@@ -28,9 +48,9 @@ void cap_value_255(int *value){
 }
 
 Uint32 add_32Bit_ARGB(Uint32 og_color, unsigned char a_a, unsigned char a_r, unsigned char a_g, unsigned char a_b){
-    int a = 0xff000000 & og_color;
-    int r = 0x00ff0000 & og_color;
-    int g = 0x0000ff00 & og_color;
+    int a = 0x000000ff & (og_color >> 24);
+    int r = 0x000000ff & (og_color >> 16);
+    int g = 0x000000ff & (og_color >> 8);
     int b = 0x000000ff & og_color;
     a += a_a;
     r += a_r;
@@ -43,28 +63,21 @@ Uint32 add_32Bit_ARGB(Uint32 og_color, unsigned char a_a, unsigned char a_r, uns
     return get_32bit_ARGB(a, r, g, b);
 }
 
-struct Color {
-    int a = 255;
-    int r = 255;
-    int g = 255;
-    int b = 255;
-};
-
 Uint32 add_32Bit_ARGB(Uint32 og_color, Color other){
     return add_32Bit_ARGB(og_color, other.a, other.r, other.g, other.b);
 }
 
-struct SpotLight {
-    double radius;
-    double og_x_offset;
-    double og_y_offset;
-    double offset_x;
-    double offset_y;
-    double upper_bounds = -1;
-    double lower_bounds = -1;
-    double offset_Y = 0;
-    Color sl_color;
-};
+/*
+    Movement funcs
+*/
+
+double basic_move(double og, double speed, double range, int frame_count){
+    return og + range * WINDOW_SIZE_X * sin((frame_count / 60.0) * speed);
+}
+
+double move_one(double og, double speed, double range, int frame_count){
+    return og + range * WINDOW_SIZE_X * cos((frame_count / 60.0) * speed);
+}
 
 int read_in_spotlights(SpotLight spotlights[]) {
     int count = 0;
@@ -73,10 +86,13 @@ int read_in_spotlights(SpotLight spotlights[]) {
     double x_offset;
     double y_offset;
     Color this_color;
+    string x_move;
+    string y_move;
     cin >> radius;
     while (cin && count < MAX_SPOTLIGHTS)
     {
         cin >> x_offset >> y_offset >> this_color.a >> this_color.r >> this_color.g >> this_color.b;
+        cin >> x_move >> y_move;
         SpotLight temp;
         temp.radius = radius;
         if(x_offset == -1.0){
@@ -93,6 +109,18 @@ int read_in_spotlights(SpotLight spotlights[]) {
         temp.sl_color.r = this_color.r;
         temp.sl_color.g = this_color.g;
         temp.sl_color.b = this_color.b;
+
+        if(x_move == "O"){
+            temp.x_move = move_one;
+        } else {
+            temp.x_move = basic_move;
+        }
+
+        if(y_move == "O"){
+            temp.y_move = move_one;
+        } else {
+            temp.y_move = basic_move;
+        }
 
         spotlights[count] = temp;
         ++count;
@@ -126,11 +154,9 @@ int main(int argc, char* argv[]){
 
     cout << "Spotlight count:" << spotlight_count << endl;
 
-    cout << "Test:" << add_32Bit_ARGB(0xffff0000, 255, 0, 0x0f, 0) << endl;
+    //cout << "Test:" << add_32Bit_ARGB(0xffff0000, 255, 0, 0x0f, 0) << endl;
 
-    while (in_use){
-        //memset(pixels, 0, WINDOW_SIZE_X * WINDOW_SIZE_Y * sizeof(Uint32));
-	
+    while (in_use){	
         SDL_UpdateTexture(texture, NULL, pixels, WINDOW_SIZE_X * sizeof(Uint32));
         
         SDL_Event event;
@@ -163,8 +189,8 @@ int main(int argc, char* argv[]){
 
         for (int i = 0; i < spotlight_count; i++)
         {
-            spotlights[i].offset_x = spotlights[i].og_x_offset + .25 * WINDOW_SIZE_X * sin(frame_count / 50.0);
-            spotlights[i].offset_y = spotlights[i].og_y_offset + .25 * WINDOW_SIZE_Y * sin(frame_count / 50.0);
+            spotlights[i].offset_x = spotlights[i].x_move(spotlights[i].og_x_offset, 1, .25, frame_count);
+            spotlights[i].offset_y = spotlights[i].y_move(spotlights[i].og_y_offset, 1, .25, frame_count);
         }
         
 
