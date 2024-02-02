@@ -28,8 +28,14 @@ struct SpotLight {
     double offset_y = 0;
     double upper_bounds = -1;
     double lower_bounds = -1;
-    double (*x_move)(double og, double speed, double range, int frame_count);
-    double (*y_move)(double og, double speed, double range, int frame_count);
+    double (*x_move)(double og, double speed, double range, double mult, int frame_count);
+    double (*y_move)(double og, double speed, double range, double mult, int frame_count);
+    double x_speed;
+    double y_speed;
+    double x_mag;
+    double y_mag;
+    double x_mult;
+    double y_mult;
     Color sl_color;
 };
 
@@ -71,12 +77,12 @@ Uint32 add_32Bit_ARGB(Uint32 og_color, Color other){
     Movement funcs
 */
 
-double basic_move(double og, double speed, double range, int frame_count){
-    return og + range * WINDOW_SIZE_X * sin((frame_count / 60.0) * speed);
+double basic_move(double og, double speed, double range, double mult, int frame_count){
+    return og + mult * WINDOW_SIZE_X * sin(((frame_count / 60.0) * speed) + range);
 }
 
-double move_one(double og, double speed, double range, int frame_count){
-    return og + range * WINDOW_SIZE_X * cos((frame_count / 60.0) * speed);
+double move_one(double og, double speed, double range, double mult, int frame_count){
+    return og + mult * WINDOW_SIZE_X * cos(((frame_count / 60.0) * speed) + range);
 }
 
 int read_in_spotlights(SpotLight spotlights[]) {
@@ -91,9 +97,10 @@ int read_in_spotlights(SpotLight spotlights[]) {
     cin >> radius;
     while (cin && count < MAX_SPOTLIGHTS)
     {
-        cin >> x_offset >> y_offset >> this_color.a >> this_color.r >> this_color.g >> this_color.b;
-        cin >> x_move >> y_move;
         SpotLight temp;
+        cin >> x_offset >> y_offset >> this_color.a >> this_color.r >> this_color.g >> this_color.b;
+        cin >> x_move >> y_move >> temp.x_speed >> temp.y_speed >> temp.x_mag >> temp.y_mag;
+        cin >> temp.x_mult >> temp.y_mult;
         temp.radius = radius;
         if(x_offset == -1.0){
             x_offset = DEFAULT_OFFSET_X;
@@ -156,6 +163,8 @@ int main(int argc, char* argv[]){
 
     //cout << "Test:" << add_32Bit_ARGB(0xffff0000, 255, 0, 0x0f, 0) << endl;
 
+    Uint32 BACKGROUND_COLOR = get_32bit_ARGB(255,0, 0, 0);
+
     while (in_use){	
         SDL_UpdateTexture(texture, NULL, pixels, WINDOW_SIZE_X * sizeof(Uint32));
         
@@ -176,7 +185,7 @@ int main(int argc, char* argv[]){
             }
             for (int y = 0; y < WINDOW_SIZE_Y; y++)
             {
-                Uint32 hold_color = 0;
+                Uint32 hold_color = BACKGROUND_COLOR;
                 for (int i = 0; i < spotlight_count; i++)
                 {
                     if(y >= spotlights[i].lower_bounds && y <= spotlights[i].upper_bounds){
@@ -189,12 +198,12 @@ int main(int argc, char* argv[]){
 
         for (int i = 0; i < spotlight_count; i++)
         {
-            spotlights[i].offset_x = spotlights[i].x_move(spotlights[i].og_x_offset, 1, .25, frame_count);
-            spotlights[i].offset_y = spotlights[i].y_move(spotlights[i].og_y_offset, 1, .25, frame_count);
+            spotlights[i].offset_x = spotlights[i].x_move(spotlights[i].og_x_offset, spotlights[i].x_speed,
+                spotlights[i].x_mag, spotlights[i].x_mult, frame_count);
+            spotlights[i].offset_y = spotlights[i].y_move(spotlights[i].og_y_offset, spotlights[i].y_speed,
+                spotlights[i].y_mag, spotlights[i].x_mult, frame_count);
         }
         
-
-
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
                 case SDL_QUIT:
